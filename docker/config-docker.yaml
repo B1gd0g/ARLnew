@@ -133,6 +133,6 @@ ARL:
   FILE_LEAK_DICT: "/code/app/dicts/file_top_2000.txt"
 
   #域名爆破并发数
-  DOMAIN_BRUTE_CONCURRENT: 300
+  DOMAIN_BRUTE_CONCURRENT: 500
   #组合生成的域名爆破并发数
   ALT_DNS_CONCURRENT: 1500
