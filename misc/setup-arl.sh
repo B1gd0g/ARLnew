@@ -1,257 +1,95 @@
+#!/bin/bash
+
 set -e
 
-cd /etc/yum.repos.d/
-sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-*
-sed -i 's|baseurl=http://.*centos.org|baseurl=https://mirrors.adysec.com/system/centos|g' /etc/yum.repos.d/CentOS-*
-sed -i 's|#baseurl=https://mirrors.adysec.com/system/centos|baseurl=https://mirrors.adysec.com/system/centos|g' /etc/yum.repos.d/CentOS-*
+# 更新系统
+echo "更新系统..."
+apt update -y
+apt upgrade -y
 
-echo "cd /opt/"
+# 安装必要的依赖
+echo "安装必要的依赖..."
+apt install -y software-properties-common wget curl gnupg2
 
-mkdir -p /opt/
-cd /opt/
+# 添加 MongoDB 仓库
+echo "添加 MongoDB 仓库..."
+wget -qO - https://www.mongodb.org/static/pgp/server-4.0.asc | sudo apt-key add -
+echo "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu focal/mongodb-org/4.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-4.0.list
 
-tee /etc/resolv.conf <<"EOF"
-nameserver 180.76.76.76
-nameserver 4.2.2.1
-nameserver 1.1.1.1
-EOF
+# 添加 RabbitMQ 仓库
+echo "添加 RabbitMQ 仓库..."
+wget -O- https://dl.rabbitmq.com/rabbitmq-release-signing-key.asc | sudo apt-key add -
+echo "deb https://dl.bintray.com/rabbitmq/debian buster main" | sudo tee /etc/apt/sources.list.d/rabbitmq.list
 
+# 更新并安装 MongoDB 和 RabbitMQ
+echo "安装 MongoDB 和 RabbitMQ..."
+apt update -y
+apt install -y mongodb-org rabbitmq-server
 
-tee /etc/yum.repos.d/mongodb-org-4.0.repo <<"EOF"
-[mongodb-org-4.0]
-name=MongoDB Repository
-baseurl=https://repo.mongodb.org/yum/redhat/7/mongodb-org/4.0/x86_64/
-gpgcheck=1
-enabled=1
-gpgkey=https://www.mongodb.org/static/pgp/server-4.0.asc
-EOF
-
-tee //etc/yum.repos.d/rabbitmq.repo <<"EOF"
-[rabbitmq_erlang]
-name=rabbitmq_erlang
-baseurl=https://packagecloud.io/rabbitmq/erlang/el/8/$basearch
-repo_gpgcheck=1
-gpgcheck=1
-enabled=1
-# PackageCloud's repository key and RabbitMQ package signing key
-gpgkey=https://packagecloud.io/rabbitmq/erlang/gpgkey
-       https://github.com/rabbitmq/signing-keys/releases/download/2.0/rabbitmq-release-signing-key.asc
-sslverify=1
-sslcacert=/etc/pki/tls/certs/ca-bundle.crt
-metadata_expire=300
-
-[rabbitmq_erlang-source]
-name=rabbitmq_erlang-source
-baseurl=https://packagecloud.io/rabbitmq/erlang/el/8/SRPMS
-repo_gpgcheck=1
-gpgcheck=0
-enabled=1
-gpgkey=https://packagecloud.io/rabbitmq/erlang/gpgkey
-       https://github.com/rabbitmq/signing-keys/releases/download/2.0/rabbitmq-release-signing-key.asc
-sslverify=1
-sslcacert=/etc/pki/tls/certs/ca-bundle.crt
-metadata_expire=300
-
-[rabbitmq_server]
-name=rabbitmq_server
-baseurl=https://packagecloud.io/rabbitmq/rabbitmq-server/el/8/$basearch
-repo_gpgcheck=1
-gpgcheck=0
-enabled=1
-gpgkey=https://packagecloud.io/rabbitmq/rabbitmq-server/gpgkey
-       https://github.com/rabbitmq/signing-keys/releases/download/2.0/rabbitmq-release-signing-key.asc
-sslverify=1
-sslcacert=/etc/pki/tls/certs/ca-bundle.crt
-metadata_expire=300
-
-[rabbitmq_server-source]
-name=rabbitmq_server-source
-baseurl=https://packagecloud.io/rabbitmq/rabbitmq-server/el/8/SRPMS
-repo_gpgcheck=1
-gpgcheck=0
-enabled=1
-gpgkey=https://packagecloud.io/rabbitmq/rabbitmq-server/gpgkey
-sslverify=1
-sslcacert=/etc/pki/tls/certs/ca-bundle.crt
-metadata_expire=300
-EOF
-
-echo "install dependencies ..."
-cd /opt/
-yum update -y
-yum install epel-release -y
-yum install systemd -y
-yum install rabbitmq-server --nobest -y
-yum install python36 mongodb-org-server mongodb-org-shell python36-devel gcc-c++ git nginx fontconfig wqy-microhei-fonts unzip wget -y
-
-if [ ! -f /usr/bin/python3.6 ]; then
-  echo "link python3.6"
-  ln -s /usr/bin/python36 /usr/bin/python3.6
-fi
-
-if [ ! -f /usr/local/bin/pip3.6 ]; then
-  echo "install  pip3.6"
-  python3.6 -m ensurepip --default-pip
-  python3.6 -m pip install --upgrade pip
-  pip3.6 config --global set global.index-url https://mirrors.adysec.com/language/pypi
-  pip3.6 --version
-fi
-
-if ! command -v nmap &> /dev/null
-then
-    echo "install nmap ..."
-    yum install nmap -y
-fi
-
-
-if ! command -v nuclei &> /dev/null
-then
-  echo "install nuclei"
-  wget -c https://github.com/B1gd0g/ARLnew/raw/master/tools/nuclei.zip -O nuclei.zip
-  unzip nuclei.zip && mv nuclei /usr/bin/ && rm -f nuclei.zip
-  nuclei -ut
-  rm -rf /opt/*
-fi
-
-
-if ! command -v wih &> /dev/null
-then
-  echo "install wih ..."
-  ## 安装 WIH
-  wget -c https://github.com/B1gd0g/ARLnew/raw/master/tools/wih/wih_linux_amd64 -O /usr/bin/wih && chmod +x /usr/bin/wih
-  wih --version
-fi
-
-
-echo "start services ..."
-systemctl enable mongod
-systemctl restart mongod
+# 启动服务
+echo "启动服务..."
+systemctl enable mongodb
+systemctl start mongodb
 systemctl enable rabbitmq-server
-systemctl restart rabbitmq-server
+systemctl start rabbitmq-server
 
-cd /opt
-if [ ! -d ARL ]; then
-  echo "git clone ARL proj"
+# 安装 Python 3.6 和 pip
+echo "安装 Python 3.6 和 pip..."
+apt install -y python3.6 python3.6-dev python3-pip
+
+# 设置 pip 源
+echo "设置 pip 源..."
+pip3 install --upgrade pip
+pip3 config set global.index-url https://mirrors.adysec.com/language/pypi
+
+# 安装其他工具
+echo "安装其他工具..."
+apt install -y git nginx fontconfig wqy-microhei-fonts unzip nmap
+
+# 安装 Nuclei
+echo "安装 Nuclei..."
+wget -c https://github.com/B1gd0g/ARLnew/raw/master/tools/nuclei.zip -O nuclei.zip
+unzip nuclei.zip && mv nuclei /usr/local/bin/ && rm -f nuclei.zip
+nuclei -ut
+
+# 安装 WIH
+echo "安装 WIH..."
+wget -c https://github.com/B1gd0g/ARLnew/raw/master/tools/wih/wih_linux_amd64 -O /usr/local/bin/wih
+chmod +x /usr/local/bin/wih
+
+# 克隆 ARL 项目
+echo "克隆 ARL 项目..."
+cd /opt/
+if [ ! -d ARLnew ]; then
   git clone https://github.com/B1gd0g/ARLnew
 fi
 
-if [ ! -d "ARL-NPoC" ]; then
-  echo "mv ARL-NPoC proj"
- mv ARL/tools/ARL-NPoC ARL-NPoC
-fi
+# 安装 ARL 依赖
+echo "安装 ARL 依赖..."
+cd ARLnew
+pip3 install -r requirements.txt
 
-cd /opt/ARL-NPoC
-echo "install poc requirements ..."
-pip3.6 install -r requirements.txt
-pip3.6 install -e .
-cd ../
+# 下载 ncrack
+echo "下载 ncrack..."
+wget -c https://github.com/B1gd0g/ARLnew/raw/master/tools/ncrack -O /usr/local/bin/ncrack
+chmod +x /usr/local/bin/ncrack
 
-if [ ! -f /usr/local/bin/ncrack ]; then
-  echo "Download ncrack ..."
-  wget -c https://github.com/B1gd0g/ARLnew/raw/master/tools/ncrack -O /usr/local/bin/ncrack
-  chmod +x /usr/local/bin/ncrack
-fi
-
+# 下载 ncrack-services
+echo "下载 ncrack-services..."
 mkdir -p /usr/local/share/ncrack
-if [ ! -f /usr/local/share/ncrack/ncrack-services ]; then
-  echo "Download ncrack-services ..."
-  wget -c https://github.com/B1gd0g/ARLnew/raw/master/tools/ncrack-services -O /usr/local/share/ncrack/ncrack-services
-fi
+wget -c https://github.com/B1gd0g/ARLnew/raw/master/tools/ncrack-services -O /usr/local/share/ncrack/ncrack-services
 
+# 下载 GeoLite2 数据库
+echo "下载 GeoLite2 数据库..."
 mkdir -p /data/GeoLite2
-if [ ! -f /data/GeoLite2/GeoLite2-ASN.mmdb ]; then
-  echo "download GeoLite2-ASN.mmdb ..."
-  wget -c https://github.com/B1gd0g/ARLnew/raw/master/tools/GeoLite2-ASN.mmdb -O /data/GeoLite2/GeoLite2-ASN.mmdb
-fi
+wget -c https://github.com/B1gd0g/ARLnew/raw/master/tools/GeoLite2-ASN.mmdb -O /data/GeoLite2/GeoLite2-ASN.mmdb
+wget -c https://github.com/B1gd0g/ARLnew/raw/master/tools/GeoLite2-City.mmdb -O /data/GeoLite2/GeoLite2-City.mmdb
 
-if [ ! -f /data/GeoLite2/GeoLite2-City.mmdb ]; then
-  echo "download GeoLite2-City.mmdb ..."
-  wget -c https://github.com/B1gd0g/ARLnew/raw/master/tools/GeoLite2-City.mmdb -O /data/GeoLite2/GeoLite2-City.mmdb
-fi
+# 配置 RabbitMQ 用户
+echo "配置 RabbitMQ 用户..."
+rabbitmqctl add_user arl arlpassword
+rabbitmqctl add_vhost arlv2host
+rabbitmqctl set_user_tags arl arltag
+rabbitmqctl set_permissions -p arlv2host arl ".*" ".*" ".*"
 
-cd /opt/ARL
-
-if [ ! -f rabbitmq_user ]; then
-  echo "add rabbitmq user"
-  rabbitmqctl add_user arl arlpassword
-  rabbitmqctl add_vhost arlv2host
-  rabbitmqctl set_user_tags arl arltag
-  rabbitmqctl set_permissions -p arlv2host arl ".*" ".*" ".*"
-  echo "init arl user"
-  mongo 127.0.0.1:27017/arl docker/mongo-init.js
-  touch rabbitmq_user
-fi
-
-echo "install arl requirements ..."
-pip3.6 install -r requirements.txt
-if [ ! -f app/config.yaml ]; then
-  echo "create config.yaml"
-  cp app/config.yaml.example  app/config.yaml
-fi
-
-if [ ! -f /usr/bin/phantomjs ]; then
-  echo "install phantomjs"
-  ln -s `pwd`/app/tools/phantomjs  /usr/bin/phantomjs
-fi
-
-if [ ! -f /etc/nginx/conf.d/arl.conf ]; then
-  echo "copy arl.conf"
-  cp misc/arl.conf /etc/nginx/conf.d
-fi
-
-
-
-if [ ! -f /etc/ssl/certs/dhparam.pem ]; then
-  echo "download dhparam.pem"
-  curl https://ssl-config.mozilla.org/ffdhe2048.txt > /etc/ssl/certs/dhparam.pem
-fi
-
-
-echo "gen cert ..."
-chmod +x docker/worker/gen_crt.sh
-./docker/worker/gen_crt.sh
-
-
-cd /opt/ARL/
-
-
-if [ ! -f /etc/systemd/system/arl-web.service ]; then
-  echo  "copy arl-web.service"
-  cp misc/arl-web.service /etc/systemd/system/
-fi
-
-if [ ! -f /etc/systemd/system/arl-worker.service ]; then
-  echo  "copy arl-worker.service"
-  cp misc/arl-worker.service /etc/systemd/system/
-fi
-
-
-if [ ! -f /etc/systemd/system/arl-worker-github.service ]; then
-  echo  "copy arl-worker-github.service"
-  cp misc/arl-worker-github.service /etc/systemd/system/
-fi
-
-if [ ! -f /etc/systemd/system/arl-scheduler.service ]; then
-  echo  "copy arl-scheduler.service"
-  cp misc/arl-scheduler.service /etc/systemd/system/
-fi
-
-chmod +x /opt/ARL/app/tools/*
-
-echo "start arl services ..."
-
-systemctl enable arl-web
-systemctl restart arl-web
-systemctl enable arl-worker
-systemctl restart arl-worker
-systemctl enable arl-worker-github
-systemctl restart arl-worker-github
-systemctl enable arl-scheduler
-systemctl restart arl-scheduler
-systemctl enable nginx
-systemctl restart nginx
-
-python3.6 tools/add_finger.py
-python3.6 tools/add_finger_ehole.py
-
-echo "install done"
+echo "安装完成"
